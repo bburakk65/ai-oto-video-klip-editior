@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Kesit — AI Video Editor</title>
+<style>
+:root{
+  --bg:#0d0f12; --panel:#15181d; --panel2:#1b1f26; --line:#262b33;
+  --text:#eef0f2; --dim:#8b93a1; --accent:#5ef2c0; --accent2:#ff6a55; --warn:#ffb347;
+  --radius:10px;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: light){
+  :root:not([data-theme="dark"]){ --bg:#f4f5f7; --panel:#fff; --panel2:#eceef1; --line:#dde1e6; --text:#14171c; --dim:#5c6470; }
+}
+:root[data-theme="dark"]{ --bg:#0d0f12; --panel:#15181d; --panel2:#1b1f26; --line:#262b33; --text:#eef0f2; --dim:#8b93a1; }
+*{box-sizing:border-box}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--text);font-family:'Space Grotesk',system-ui,-apple-system,Segoe UI,sans-serif;-webkit-font-smoothing:antialiased}
+h1,h2,h3{font-family:'Space Grotesk',system-ui,sans-serif;margin:0;letter-spacing:-0.01em}
+p,li,span,button,input,select{font-family:'Inter',system-ui,-apple-system,sans-serif}
+.wrap{max-width:900px;margin:0 auto;padding:18px 16px 60px}
+header{position:sticky;top:0;top:env(safe-area-inset-top,0px);z-index:20;background:color-mix(in srgb, var(--bg) 88%, transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+header .inner{max-width:900px;margin:0 auto;padding:14px 16px;display:flex;align-items:center;justify-content:space-between}
+.logo{display:flex;align-items:center;gap:9px;font-size:18px;font-weight:700}
+.logo .dot{width:9px;height:9px;border-radius:50%;background:var(--accent);box-shadow:0 0 10px var(--accent)}
+.badge{font-size:12px;color:var(--dim);border:1px solid var(--line);padding:4px 9px;border-radius:20px}
+
+/* upload */
+.drop{border:1.5px dashed var(--line);border-radius:16px;padding:46px 20px;text-align:center;transition:.15s;background:var(--panel)}
+.drop.drag{border-color:var(--accent);background:var(--panel2)}
+.drop h2{font-size:22px;margin-bottom:8px}
+.drop p{color:var(--dim);font-size:14px;margin:0 0 20px;line-height:1.5}
+.btn{appearance:none;border:none;border-radius:9px;padding:12px 20px;font-size:14.5px;font-weight:600;cursor:pointer;transition:.12s transform,.12s opacity}
+.btn:active{transform:scale(.97)}
+.btn-primary{background:var(--accent);color:#06110c}
+.btn-ghost{background:transparent;border:1px solid var(--line);color:var(--text)}
+.btn-danger{background:transparent;border:1px solid var(--accent2);color:var(--accent2)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+input[type=file]{display:none}
+
+.progress-wrap{margin-top:16px}
+.bar{height:6px;border-radius:4px;background:var(--panel2);overflow:hidden}
+.bar > div{height:100%;background:linear-gradient(90deg,var(--accent),#3fd8ff);width:0%;transition:width .15s}
+.progress-label{display:flex;justify-content:space-between;font-size:12.5px;color:var(--dim);margin-top:6px}
+
+/* editor layout */
+.editor{display:none}
+.stage{background:#000;border-radius:14px;overflow:hidden;position:relative;border:1px solid var(--line)}
+video{width:100%;display:block;max-height:56vh;background:#000}
+.cue-overlay{position:absolute;left:0;right:0;bottom:8%;text-align:center;padding:0 6%;pointer-events:none}
+.cue-overlay span{display:inline-block;padding:5px 10px;border-radius:6px;font-weight:600;line-height:1.35}
+
+.timeline{margin-top:14px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px}
+.tl-track{position:relative;height:46px;background:var(--panel2);border-radius:8px;overflow:hidden;cursor:pointer}
+.tl-mark{position:absolute;top:0;bottom:0;width:2px;background:var(--warn)}
+.tl-mark.scene{background:#3fd8ff}
+.tl-mark.energy{background:var(--accent2)}
+.tl-playhead{position:absolute;top:0;bottom:0;width:2px;background:var(--text)}
+.tl-legend{display:flex;gap:14px;margin-top:8px;font-size:11.5px;color:var(--dim)}
+.tl-legend i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px;vertical-align:middle}
+
+.section-title{display:flex;align-items:center;justify-content:space-between;margin:26px 0 10px}
+.section-title h3{font-size:15px}
+.section-title .dim{font-size:12.5px;color:var(--dim)}
+
+.moments-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+@media (max-width:520px){.moments-grid{grid-template-columns:1fr}}
+.moment-card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:11px 12px;cursor:pointer;transition:.12s border-color}
+.moment-card:hover{border-color:var(--accent)}
+.moment-card .tag{font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:5px;display:inline-block;margin-bottom:6px}
+.tag.scene{background:rgba(63,216,255,.15);color:#3fd8ff}
+.tag.energy{background:rgba(255,106,85,.15);color:var(--accent2)}
+.moment-card .time{font-variant-numeric:tabular-nums;font-weight:600;font-size:14px}
+.moment-card .note{font-size:12px;color:var(--dim);margin-top:3px}
+
+.clip-row{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:8px;display:flex;flex-direction:column;gap:9px}
+.clip-top{display:flex;justify-content:space-between;align-items:center}
+.clip-top .name{font-weight:600;font-size:14.5px}
+.time-inputs{display:flex;gap:8px;align-items:center;font-size:12.5px;color:var(--dim);flex-wrap:wrap}
+.time-inputs input{width:64px;background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:5px 6px;font-size:12.5px;font-variant-numeric:tabular-nums}
+.clip-actions{display:flex;gap:8px;flex-wrap:wrap}
+.clip-actions .btn{padding:8px 13px;font-size:13px}
+.mini-status{font-size:11.5px;color:var(--dim)}
+
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+select,.txt{background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:7px;padding:8px 10px;font-size:13px}
+.swatch{width:26px;height:26px;border-radius:6px;border:1px solid var(--line);cursor:pointer}
+.swatch.active{outline:2px solid var(--accent);outline-offset:2px}
+.empty{color:var(--dim);font-size:13px;padding:10px 2px}
+.note-box{font-size:12px;color:var(--dim);border-left:2px solid var(--line);padding:8px 10px;margin-top:10px;line-height:1.5}
+.hidden{display:none}
+footer{margin-top:40px;color:var(--dim);font-size:12px;text-align:center}
+canvas.offscreen{display:none}
+</style>
+</head>
+<body>
+<header><div class="inner">
+  <div class="logo"><span class="dot"></span>Kesit</div>
+  <span class="badge">AI Video Editor · demo çekirdeği</span>
+</div></header>
+
+<div class="wrap">
+
+  <!-- UPLOAD -->
+  <section id="uploadScreen">
+    <div class="drop" id="dropZone">
+      <h2>Videonu yükle</h2>
+      <p>Sürükle-bırak ya da telefonundan dosya seç.<br>Analiz tamamen bu cihazda, tarayıcıda çalışır.</p>
+      <button class="btn btn-primary" id="pickBtn">Video Seç</button>
+      <input type="file" id="fileInput" accept="video/*" capture="environment">
+    </div>
+    <div class="progress-wrap hidden" id="progressWrap">
+      <div class="bar"><div id="progressBar"></div></div>
+      <div class="progress-label"><span id="progressText">Yükleniyor…</span><span id="progressPct">0%</span></div>
+    </div>
+    <div class="note-box">
+      Gerçekçi beklenti: "komik/heyecanlı an" etiketleri şu an sahne değişimi ve ses enerjisi zirvelerine dayanan
+      bir sezgisel (heuristic) analizle üretiliyor — gerçek bir görsel/duygu AI modeli değil. Kod, bu noktaya
+      gerçek bir AI API'si (ör. görüntü/ses anlayan bir model) bağlanacak şekilde tek bir fonksiyonda
+      (<code>runAIAnalysis</code>) izole edilmiştir.
+    </div>
+  </section>
+
+  <!-- EDITOR -->
+  <section class="editor" id="editorScreen">
+    <div class="stage">
+      <video id="videoEl" playsinline controls></video>
+      <div class="cue-overlay hidden" id="cueOverlay"><span id="cueText"></span></div>
+    </div>
+
+    <div class="timeline">
+      <div class="tl-track" id="tlTrack">
+        <div class="tl-playhead" id="tlPlayhead" style="left:0%"></div>
+      </div>
+      <div class="tl-legend">
+        <span><i style="background:#3fd8ff"></i>Sahne değişimi</span>
+        <span><i style="background:var(--accent2)"></i>Ses enerjisi zirvesi</span>
+      </div>
+    </div>
+
+    <div class="section-title"><h3>Analiz durumu</h3><span class="dim" id="analysisStatus">Bekliyor…</span></div>
+    <div class="panel"><div class="progress-wrap" style="margin-top:0"><div class="bar"><div id="analysisBar"></div></div></div></div>
+
+    <div class="section-title"><h3>Tespit edilen anlar</h3><span class="dim" id="momentsCount">0 an</span></div>
+    <div class="moments-grid" id="momentsGrid"><div class="empty">Analiz tamamlanınca burada listelenecek.</div></div>
+
+    <div class="section-title"><h3>Klipler</h3><span class="dim" id="clipsCount">0 klip</span></div>
+    <button class="btn btn-ghost" id="addClipBtn" style="margin-bottom:10px">+ Manuel klip ekle</button>
+    <div id="clipsList"><div class="empty">Henüz klip yok. Bir "an" kartına dokun ya da manuel ekle.</div></div>
+
+    <div class="section-title"><h3>Altyazı</h3><span class="dim">tarayıcı konuşma tanıma · deneysel</span></div>
+    <div class="panel">
+      <div class="row">
+        <button class="btn btn-ghost" id="captionToggle">🎙 Canlı altyazı çıkarımını başlat</button>
+        <span class="mini-status" id="captionStatus">Kapalı</span>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <select id="fontSize"><option value="16">Küçük</option><option value="22" selected>Orta</option><option value="30">Büyük</option></select>
+        <div class="swatch active" data-color="#ffffff" style="background:#fff"></div>
+        <div class="swatch" data-color="#5ef2c0" style="background:#5ef2c0"></div>
+        <div class="swatch" data-color="#ffb347" style="background:#ffb347"></div>
+        <div class="swatch" data-color="#ff6a55" style="background:#ff6a55"></div>
+        <label style="font-size:12.5px;color:var(--dim);display:flex;align-items:center;gap:6px">
+          <input type="checkbox" id="capBg" checked> arka plan
+        </label>
+      </div>
+      <div class="note-box">
+        Web Speech API tarayıcı standardı olarak yalnızca canlı mikrofon girişini dinleyebiliyor, bir video
+        dosyasının ses izini doğrudan işleyemiyor — bu yüzden video oynatılırken cihaz mikrofonunu dinler
+        (en iyi sonuç için hoparlör sesi mikrofona ulaşmalı). Dosyadan doğrudan ve doğru transkript için
+        <code>transcribeWithAI(videoBlob)</code> fonksiyonu hazır bırakıldı; gerçek bir konuşma-metin API'si
+        (ör. Whisper) buraya bağlanınca tüm modül otomatik olarak ona geçer.
+      </div>
+    </div>
+
+    <div class="section-title"><h3>Yeni video</h3></div>
+    <button class="btn btn-ghost" id="resetBtn">↺ Başka video yükle</button>
+  </section>
+
+  <footer>Kesit — istemci tarafında çalışan analiz çekirdeği. Gerçek AI servisleri için hook noktaları koda işaretlendi.</footer>
+</div>
+
+<canvas class="offscreen" id="analysisCanvas"></canvas>
+
+<script>
+(() => {
+/* ============================================================
+   STATE
+   ============================================================ */
+const state = {
+  file: null, videoURL: null, duration: 0,
+  moments: [],   // {t, type:'scene'|'energy', label, note}
+  clips: [],     // {id, name, start, end}
+  captions: [],  // {start,end,text}
+  clipCounter: 0
+};
+
+const $ = id => document.getElementById(id);
+const videoEl = $('videoEl');
+
+function fmt(t){
+  if(!isFinite(t)) t = 0;
+  const m = Math.floor(t/60), s = (t%60).toFixed(1);
+  return `${String(m).padStart(2,'0')}:${s.padStart(4,'0')}`;
+}
+
+/* ============================================================
+   1. UPLOAD MODULE — drag/drop + mobile picker + real read progress
+   ============================================================ */
+const dropZone = $('dropZone'), fileInput = $('fileInput'), pickBtn = $('pickBtn');
+pickBtn.addEventListener('click', () => fileInput.click());
+['dragenter','dragover'].forEach(ev => dropZone.addEventListener(ev, e => { e.preventDefault(); dropZone.classList.add('drag'); }));
+['dragleave','drop'].forEach(ev => dropZone.addEventListener(ev, e => { e.preventDefault(); dropZone.classList.remove('drag'); }));
+dropZone.addEventListener('drop', e => { const f = e.dataTransfer.files[0]; if(f) handleFile(f); });
+fileInput.addEventListener('change', e => { const f = e.target.files[0]; if(f) handleFile(f); });
+
+function handleFile(file){
+  if(!file.type.startsWith('video/')){ alert('Lütfen bir video dosyası seç.'); return; }
+  state.file = file;
+  $('progressWrap').classList.remove('hidden');
+  const reader = new FileReader();
+  reader.onprogress = e => {
+    if(e.lengthComputable){
+      const pct = Math.round((e.loaded/e.total)*100);
+      $('progressBar').style.width = pct+'%';
+      $('progressPct').textContent = pct+'%';
+    }
+  };
+  reader.onload = () => {
+    $('progressText').textContent = 'Yüklendi';
+    state.videoURL = URL.createObjectURL(file);
+    videoEl.src = state.videoURL;
+    videoEl.onloadedmetadata = () => {
+      state.duration = videoEl.duration;
+      $('uploadScreen').style.display = 'none';
+      $('editorScreen').style.display = 'block';
+      runAIAnalysis();
+    };
+  };
+  reader.readAsArrayBuffer(file); // gerçek byte okuma -> gerçek ilerleme yüzdesi
+}
+
+$('resetBtn').addEventListener('click', () => location.reload());
+
+/* ============================================================
+   2. AI ANALYSIS MODULE
+   Şu an: gerçek sinyal işleme (kare farkı + ses RMS) ile aday an tespiti.
+   Bağlantı noktası: bu fonksiyonun içini gerçek bir AI API çağrısıyla
+   değiştirerek "komik / heyecanlı / en iyi an" sınıflandırmasını
+   gerçek modele devredebilirsin. Dönen format aynı kalmalı: {t,type,label,note}
+   ============================================================ */
+async function runAIAnalysis(){
+  $('analysisStatus').textContent = 'Sahne değişimleri taranıyor…';
+  const sceneMoments = await detectSceneChanges(videoEl, pct => setAnalysisProgress(pct*0.5));
+  $('analysisStatus').textContent = 'Ses enerjisi analiz ediliyor…';
+  const energyMoments = await detectAudioEnergyPeaks(videoEl, pct => setAnalysisProgress(50 + pct*0.5));
+
+  state.moments = [...sceneMoments, ...energyMoments].sort((a,b) => a.t - b.t);
+  $('analysisStatus').textContent = `Tamamlandı — ${state.moments.length} aday an bulundu`;
+  setAnalysisProgress(100);
+  renderMoments();
+  renderTimelineMarks();
+  autoSuggestClips();
+}
+
+function setAnalysisProgress(p){ $('analysisBar').style.width = Math.min(100,Math.round(p))+'%'; }
+
+// Kare farkı ile sahne değişimi tespiti (gerçek algoritma)
+function detectSceneChanges(video, onProgress){
+  return new Promise(resolve => {
+    const canvas = $('analysisCanvas'), ctx = canvas.getContext('2d');
+    canvas.width = 64; canvas.height = 36; // hız için küçük örnekleme
+    const duration = video.duration;
+    const step = Math.max(0.5, duration/60); // en fazla ~60 örnek
+    let t = 0, prev = null, results = [];
+    const original = video.currentTime, wasMuted = video.muted;
+    video.muted = true;
+
+    function sampleNext(){
+      if(t > duration){
+        video.currentTime = original; video.muted = wasMuted;
+        resolve(mergeClose(results, 'scene')); return;
+      }
+      video.currentTime = t;
+    }
+    video.addEventListener('seeked', function onSeek(){
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const frame = ctx.getImageData(0,0,canvas.width,canvas.height).data;
+      if(prev){
+        let diff = 0;
+        for(let i=0;i<frame.length;i+=4*7){ diff += Math.abs(frame[i]-prev[i]); }
+        const norm = diff / (frame.length/(4*7)) / 255;
+        if(norm > 0.12){
+          results.push({t, type:'scene', label:'Sahne değişimi', note:'Görsel içerikte belirgin geçiş'});
+        }
+      }
+      prev = frame;
+      onProgress(Math.min(100, (t/duration)*100));
+      t += step;
+      sampleNext();
+    });
+    sampleNext();
+  });
+}
+
+// Web Audio API ile RMS enerji zirveleri (gerçek sinyal analizi)
+function detectAudioEnergyPeaks(video, onProgress){
+  return new Promise(async resolve => {
+    try{
+      const resp = await fetch(state.videoURL);
+      const buf = await resp.arrayBuffer();
+      const ctx = new (window.OfflineAudioContext || window.webkitOfflineAudioContext)(1,1,44100);
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const decoded = await audioCtx.decodeAudioData(buf.slice(0));
+      const data = decoded.getChannelData(0);
+      const sr = decoded.sampleRate;
+      const windowSize = Math.floor(sr*0.5);
+      const energies = [];
+      for(let i=0;i<data.length;i+=windowSize){
+        let sum=0, n=0;
+        for(let j=i;j<Math.min(i+windowSize,data.length);j++){ sum += data[j]*data[j]; n++; }
+        energies.push(Math.sqrt(sum/n));
+        if(i % (windowSize*20) === 0) onProgress((i/data.length)*100);
+      }
+      const mean = energies.reduce((a,b)=>a+b,0)/energies.length;
+      const threshold = mean * 2.2;
+      const results = [];
+      energies.forEach((e,idx) => {
+        if(e > threshold){
+          const t = (idx*windowSize)/sr;
+          results.push({t, type:'energy', label:'Ses enerjisi zirvesi', note:'Yüksek ses/heyecan adayı — gülüş, tezahürat, vurgu olabilir'});
+        }
+      });
+      audioCtx.close();
+      onProgress(100);
+      resolve(mergeClose(results,'energy'));
+    }catch(err){
+      console.warn('Ses analizi başarısız (ses izi olmayabilir):', err);
+      onProgress(100);
+      resolve([]);
+    }
+  });
+}
+
+function mergeClose(list, type){
+  const merged = [];
+  list.sort((a,b)=>a.t-b.t).forEach(m => {
+    if(merged.length && m.t - merged[merged.length-1].t < 1.2) return;
+    merged.push(m);
+  });
+  return merged;
+}
+
+/* ============================================================
+   3. RENDER — moments, timeline
+   ============================================================ */
+function renderMoments(){
+  const grid = $('momentsGrid');
+  $('momentsCount').textContent = state.moments.length + ' an';
+  if(!state.moments.length){ grid.innerHTML = '<div class="empty">Hiçbir belirgin an bulunamadı.</div>'; return; }
+  grid.innerHTML = state.moments.map((m,i) => `
+    <div class="moment-card" data-i="${i}">
+      <span class="tag ${m.type}">${m.type==='scene'?'SAHNE':'ENERJİ'}</span>
+      <div class="time">${fmt(m.t)}</div>
+      <div class="note">${m.note}</div>
+    </div>`).join('');
+  grid.querySelectorAll('.moment-card').forEach(card => {
+    card.addEventListener('click', () => {
+      const m = state.moments[+card.dataset.i];
+      videoEl.currentTime = m.t;
+      addClip(Math.max(0,m.t-2), Math.min(state.duration,m.t+5), m.label);
+    });
+  });
+}
+
+function renderTimelineMarks(){
+  const track = $('tlTrack');
+  track.querySelectorAll('.tl-mark').forEach(el => el.remove());
+  state.moments.forEach(m => {
+    const el = document.createElement('div');
+    el.className = 'tl-mark ' + m.type;
+    el.style.left = (m.t/state.duration*100)+'%';
+    track.appendChild(el);
+  });
+}
+$('tlTrack').addEventListener('click', e => {
+  const r = e.currentTarget.getBoundingClientRect();
+  const pct = (e.clientX - r.left)/r.width;
+  videoEl.currentTime = pct*state.duration;
+});
+videoEl.addEventListener('timeupdate', () => {
+  const pct = (videoEl.currentTime/state.duration*100)||0;
+  $('tlPlayhead').style.left = pct+'%';
+  updateCaptionOverlay();
+});
+
+function autoSuggestClips(){
+  // en yüksek 3 anı otomatik klip olarak öner
+  state.moments.slice(0,3).forEach(m => addClip(Math.max(0,m.t-2), Math.min(state.duration,m.t+5), m.label));
+}
+
+/* ============================================================
+   4. CLIP MODULE — oluşturma, düzenleme, dışa aktarma (MediaRecorder)
+   ============================================================ */
+function addClip(start, end, label){
+  state.clipCounter++;
+  state.clips.push({ id:'c'+state.clipCounter, name:(label||'Klip')+' '+state.clipCounter, start, end });
+  renderClips();
+}
+$('addClipBtn').addEventListener('click', () => addClip(videoEl.currentTime, Math.min(state.duration, videoEl.currentTime+5), 'Manuel klip'));
+
+function renderClips(){
+  const list = $('clipsList');
+  $('clipsCount').textContent = state.clips.length + ' klip';
+  if(!state.clips.length){ list.innerHTML = '<div class="empty">Henüz klip yok.</div>'; return; }
+  list.innerHTML = state.clips.map(c => `
+    <div class="clip-row" data-id="${c.id}">
+      <div class="clip-top"><span class="name">${c.name}</span>
+        <button class="btn btn-danger" data-act="del" style="padding:6px 10px;font-size:12px">Sil</button></div>
+      <div class="time-inputs">
+        Başlangıç <input type="number" step="0.1" min="0" max="${state.duration}" value="${c.start.toFixed(1)}" data-act="start">
+        Bitiş <input type="number" step="0.1" min="0" max="${state.duration}" value="${c.end.toFixed(1)}" data-act="end">
+        <span>(${fmt(c.end-c.start)} sn)</span>
+      </div>
+      <div class="clip-actions">
+        <button class="btn btn-ghost" data-act="preview">▶ Önizle</button>
+        <button class="btn btn-primary" data-act="export">⬇ Dışa aktar (.webm)</button>
+        <span class="mini-status" data-act="status"></span>
+      </div>
+    </div>`).join('');
+  list.querySelectorAll('.clip-row').forEach(row => {
+    const c = state.clips.find(x => x.id === row.dataset.id);
+    row.querySelector('[data-act=del]').onclick = () => { state.clips = state.clips.filter(x=>x!==c); renderClips(); };
+    row.querySelector('[data-act=start]').onchange = e => { c.start = parseFloat(e.target.value)||0; };
+    row.querySelector('[data-act=end]').onchange = e => { c.end = parseFloat(e.target.value)||c.start+1; };
+    row.querySelector('[data-act=preview]').onclick = () => previewClip(c);
+    row.querySelector('[data-act=export]').onclick = () => exportClip(c, row.querySelector('[data-act=status]'));
+  });
+}
+
+function previewClip(c){
+  videoEl.currentTime = c.start;
+  videoEl.play();
+  const stop = () => { if(videoEl.currentTime >= c.end){ videoEl.pause(); videoEl.removeEventListener('timeupdate', stop); } };
+  videoEl.addEventListener('timeupdate', stop);
+}
+
+// captureStream + MediaRecorder ile gerçek trim/export (Chrome/Android'de çalışır)
+async function exportClip(c, statusEl){
+  if(!videoEl.captureStream){ statusEl.textContent = 'Bu tarayıcı desteklemiyor'; return; }
+  statusEl.textContent = 'Kaydediliyor…';
+  const stream = videoEl.captureStream();
+  const chunks = [];
+  let rec;
+  try{
+    rec = new MediaRecorder(stream, { mimeType:'video/webm;codecs=vp9,opus' });
+  }catch(e){
+    rec = new MediaRecorder(stream);
+  }
+  rec.ondataavailable = e => { if(e.data.size) chunks.push(e.data); };
+  rec.onstop = () => {
+    const blob = new Blob(chunks, {type:'video/webm'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = c.name.replace(/\s+/g,'_') + '.webm';
+    a.click();
+    statusEl.textContent = 'İndirildi ✓';
+  };
+  videoEl.currentTime = c.start;
+  const wasMuted = videoEl.muted; videoEl.muted = false;
+  await new Promise(r => { videoEl.onseeked = r; });
+  rec.start();
+  videoEl.play();
+  const check = setInterval(() => {
+    if(videoEl.currentTime >= c.end){
+      clearInterval(check);
+      videoEl.pause();
+      videoEl.muted = wasMuted;
+      rec.stop();
+    }
+  }, 80);
+}
+
+/* ============================================================
+   5. CAPTIONS MODULE
+   Canlı: Web Speech API (cihaz mikrofonu). Gerçek dosya-tabanlı
+   transkript için transcribeWithAI() hook'u aşağıda.
+   ============================================================ */
+let recognition = null, listening = false;
+const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+$('captionToggle').addEventListener('click', () => {
+  if(!SpeechRec){ $('captionStatus').textContent = 'Bu tarayıcı desteklemiyor'; return; }
+  if(listening){ recognition.stop(); return; }
+  recognition = new SpeechRec();
+  recognition.lang = 'tr-TR'; recognition.continuous = true; recognition.interimResults = true;
+  recognition.onstart = () => { listening = true; $('captionStatus').textContent = 'Dinleniyor…'; $('captionToggle').textContent = '⏹ Durdur'; videoEl.play(); };
+  recognition.onend = () => { listening = false; $('captionStatus').textContent = 'Kapalı'; $('captionToggle').textContent = '🎙 Canlı altyazı çıkarımını başlat'; };
+  recognition.onresult = e => {
+    const res = e.results[e.results.length-1];
+    const text = res[0].transcript.trim();
+    if(!text) return;
+    const start = videoEl.currentTime;
+    state.captions.push({ start, end: start+3, text });
+    if(res.isFinal) showCue(text, 2500);
+  };
+  recognition.start();
+});
+
+function showCue(text, ms){
+  const overlay = $('cueOverlay'), span = $('cueText');
+  span.textContent = text;
+  span.style.fontSize = $('fontSize').value+'px';
+  span.style.color = document.querySelector('.swatch.active').dataset.color;
+  span.style.background = $('capBg').checked ? 'rgba(0,0,0,.6)' : 'transparent';
+  overlay.classList.remove('hidden');
+  clearTimeout(showCue._t);
+  showCue._t = setTimeout(() => overlay.classList.add('hidden'), ms);
+}
+function updateCaptionOverlay(){
+  const t = videoEl.currentTime;
+  const cue = state.captions.find(c => t >= c.start && t <= c.end);
+  if(cue) showCue(cue.text, 400); else $('cueOverlay').classList.add('hidden');
+}
+document.querySelectorAll('.swatch').forEach(sw => sw.addEventListener('click', () => {
+  document.querySelectorAll('.swatch').forEach(s=>s.classList.remove('active'));
+  sw.classList.add('active');
+}));
+
+// === AI HOOK: gerçek konuşma-metin API'si buraya bağlanır ===
+// Örn. bir Whisper/benzeri servise videoBlob gönderip {start,end,text}[] formatında
+// cümle listesi dönmesi yeterli — state.captions'a atanır ve altyazılar otomatik senkronize olur.
+async function transcribeWithAI(videoBlob){
+  throw new Error('Gerçek transkript API bağlı değil. Bu fonksiyonu kendi AI servisinizle doldurun.');
+  // return [{start:0,end:2.4,text:'...'}, ...];
+}
+
+})();
+</script>
+</body>
+</html>
